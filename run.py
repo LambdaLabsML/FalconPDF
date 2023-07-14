@@ -1,4 +1,3 @@
-import os
 from uuid import uuid4
 import gradio as gr
 from time import sleep
@@ -21,6 +20,7 @@ tokenizer = None
 stop_token_ids = []
 device = f'cuda:{cuda.current_device()}' if cuda.is_available() else 'cpu'
 
+db = None
 qa = None
 
 USER_NAME = "Human"
@@ -31,7 +31,7 @@ STOP_STR = f"\n{USER_NAME}:"
 STOP_SUSPECT_LIST = [":", "\n", "User"]
 
 
-def load_falcon(selected_model_name, progress=gr.Progress()):
+def load_falcon(selected_model_name, progress=gr.Progress(track_tqdm=True)):
     global model, model_name, stop_token_ids, pipeline
 
     if model is None or model_name != selected_model_name:
@@ -140,9 +140,14 @@ def user(message, history):
     return "", history + [[message, None]]
 
 
-def bot(history):
+def bot(history, retriever):
     if not history or history[-1][0] == "":
-        return "Please start the conversation by saying something.", history
+        gr.Info("Please start the conversation by saying something.")
+        return None
+
+    if qa is None:
+        gr.Info("Please upload a pdf file first.")
+        return None
 
     chat_hist = history[:-1]
     if chat_hist:
@@ -152,12 +157,16 @@ def bot(history):
     print(f"chat_hist:\n {chat_hist}")
     print("@" * 20)
 
-    response = qa(
-        {"question": history[-1][0],
-         "chat_history": chat_hist,
-         })
+    if retriever.lower() == 'basic':
+        response = qa(
+            {"query": history[-1][0]})
+    else:
+        response = qa(
+            {"question": history[-1][0],
+             "chat_history": chat_hist,
+             })
 
-    history[-1][1] = response['answer']
+    history[-1][1] = response['answer' if retriever.lower() == 'conversational' else 'result']
 
     return history
 
@@ -172,16 +181,32 @@ def create_sbert_mpnet():
     return HuggingFaceEmbeddings(model_name=EMB_SBERT_MPNET_BASE, model_kwargs={"device": device})
 
 
-def pdf_changes(pdf_doc):
+def retriever_changes(r):
+    global db, qa
+    if db is None:
+        return
+
+    if r.lower() == 'basic':
+        if not isinstance(qa, RetrievalQA):
+            print("retriever changes: basic")
+            qa = RetrievalQA.from_llm(llm=pipeline, retriever=db.as_retriever(), return_source_documents=True)
+    else:
+        if not isinstance(qa, ConversationalRetrievalChain):
+            print("retriever changes: conversational")
+            qa = ConversationalRetrievalChain.from_llm(llm=pipeline, retriever=db.as_retriever(),
+                                                       return_source_documents=True)
+
+
+def pdf_changes(pdf_doc, r):
     print("pdf changes, loading documents")
     loader = OnlinePDFLoader(pdf_doc.name)
     documents = loader.load()
     text_splitter = CharacterTextSplitter(chunk_size=600, chunk_overlap=0)
     texts = text_splitter.split_documents(documents)
     embeddings = create_sbert_mpnet()
+    global db
     db = Chroma.from_documents(texts, embeddings)
-    global qa
-    qa = ConversationalRetrievalChain.from_llm(llm=pipeline, retriever=db.as_retriever(), return_source_documents=True)
+    retriever_changes(r)
     return None
 
 
@@ -208,6 +233,8 @@ def init():
 
         pdf_doc = gr.File(label="Load a pdf", file_types=['.pdf'], type="file")
         model_id = gr.Radio(label="LLM", choices=model_names, value=model_names[0])
+        retriever = gr.Radio(label="Retriever", choices=['Basic', 'Conversational'], value='Basic',
+                             info="Basic: no coversational context. Conversational: uses conversational context.")
         chatbot = gr.Chatbot(height=500)
 
         with gr.Row():
@@ -223,6 +250,10 @@ def init():
                     submit = gr.Button("Submit")
                     stop = gr.Button("Stop")
                     clear = gr.Button("Clear")
+
+        gr.Examples(['What is the summary of the document?',
+                     'What is the motivation of the document?'],
+                    inputs=msg)
 
         def clear_input():
             sleep(1)
@@ -247,7 +278,9 @@ def init():
             .then(load_falcon, inputs=[model_id], outputs=[msg, model_id]) \
             .then(clear_input, inputs=[], outputs=[msg])
 
-        pdf_doc.upload(pdf_changes, inputs=[pdf_doc], outputs=[msg]). \
+        retriever.change(retriever_changes, inputs=[retriever], outputs=[])
+
+        pdf_doc.upload(pdf_changes, inputs=[pdf_doc, retriever], outputs=[msg]). \
             then(clear_input, inputs=[], outputs=[msg]). \
             then(lambda: None, None, chatbot)
 
@@ -260,7 +293,8 @@ def init():
         ).then(
             fn=bot,
             inputs=[
-                chatbot
+                chatbot,
+                retriever
             ],
             outputs=chatbot,
             queue=True,
@@ -275,7 +309,8 @@ def init():
         ).then(
             fn=bot,
             inputs=[
-                chatbot
+                chatbot,
+                retriever
             ],
             outputs=chatbot,
             queue=True,
