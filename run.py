@@ -145,6 +145,7 @@ def bot(history, retriever):
         gr.Info("Please start the conversation by saying something.")
         return None
 
+    global qa
     if qa is None:
         gr.Info("Please upload a pdf file first.")
         return None
@@ -233,7 +234,7 @@ def init():
 
         pdf_doc = gr.File(label="Load a pdf", file_types=['.pdf'], type="file")
         model_id = gr.Radio(label="LLM", choices=model_names, value=model_names[0])
-        retriever = gr.Radio(label="Retriever", choices=['Basic', 'Conversational'], value='Basic',
+        retriever = gr.Radio(label="Chat mode", choices=['Basic', 'Conversational'], value='Basic',
                              info="Basic: no coversational context. Conversational: uses conversational context.")
         chatbot = gr.Chatbot(height=500)
 
