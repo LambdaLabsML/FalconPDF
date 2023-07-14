@@ -260,9 +260,7 @@ def init():
         ).then(
             fn=bot,
             inputs=[
-                chatbot,
-                conversation_id,
-                model_id,
+                chatbot
             ],
             outputs=chatbot,
             queue=True,
@@ -277,9 +275,7 @@ def init():
         ).then(
             fn=bot,
             inputs=[
-                chatbot,
-                conversation_id,
-                model_id,
+                chatbot
             ],
             outputs=chatbot,
             queue=True,
@@ -297,7 +293,7 @@ def init():
 
     demo.queue(max_size=128, concurrency_count=2)
 
-    demo.launch(server_port=8266, inline=False)
+    demo.launch(server_port=8266, inline=False, share=True)
 
 
 if __name__ == "__main__":
