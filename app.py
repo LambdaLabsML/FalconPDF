@@ -1,7 +1,7 @@
 import os
 os.system(f"git lfs install")
 os.system(f"pip install torch torchvision torchaudio torchtext torchdata --extra-index-url https://download.pytorch.org/whl/cu118 -U")
-os.system(f"pip install bitsandbytes sentencepiece fsspec gradio langchain einops scipy unstructured -U")
+os.system(f"pip install bitsandbytes sentencepiece fsspec gradio langchain einops scipy unstructured xformers -U")
 os.system(f"pip install git+https://github.com/huggingface/transformers.git -U")
 # os.system(f"pip install git+https://github.com/huggingface/peft.git -U")
 os.system(f"pip install git+https://github.com/huggingface/accelerate.git -U")
