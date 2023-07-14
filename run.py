@@ -68,7 +68,7 @@ def load_falcon(selected_model_name, progress=gr.Progress(track_tqdm=True)):
 
         stop_token_ids = [
             tokenizer.convert_tokens_to_ids(x) for x in [
-                ['Human', ':'], ['AI', ':']
+                [USER_NAME, ':'], [BOT_NAME, ':']
             ]
         ]
 
@@ -267,7 +267,7 @@ def init():
                         <p> A chatbot tries to give helpful, detailed, and polite answers to the user's questions. Gradio Demo created by <a href="https://lambdalabs.com/">Lambda</a>.</p>
                     </div>
                     <div class="acknowledgments">
-                        <p> It is based on <a href="">Falcon 7B/40B</a>. More information can be found <a href="https://falconllm.tii.ae/">here</a>.</p>
+                        <p> It is based on Falcon 7B/40B. More information can be found <a href="https://falconllm.tii.ae/">here</a>.</p>
                     </div>
                 """
             )
