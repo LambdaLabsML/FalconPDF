@@ -145,7 +145,11 @@ def bot(history, retriever):
         gr.Info("Please start the conversation by saying something.")
         return None
 
-    global qa
+    global qa, pipeline
+    if pipeline is None:
+        gr.Info("Please load a model first.")
+        return None
+
     if qa is None:
         gr.Info("Please upload a pdf file first.")
         return None
@@ -183,7 +187,7 @@ def create_sbert_mpnet():
 
 
 def retriever_changes(r):
-    global db, qa
+    global db, qa, pipeline
     if db is None:
         return
 
