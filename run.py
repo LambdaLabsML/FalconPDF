@@ -76,13 +76,12 @@ def load_falcon(selected_model_name, progress=gr.Progress(track_tqdm=True)):
 
         generate_text = transformers.pipeline(
             model=model, tokenizer=tokenizer,
-            return_full_text=True,  # langchain expects the full text
+            return_full_text=True,
             task='text-generation',
-            # we pass model parameters here too
-            stopping_criteria=stopping_criteria,  # without this model rambles during chat
-            temperature=0.0,  # 'randomness' of outputs, 0.0 is the min and 1.0 the max
-            max_new_tokens=512,  # mex number of tokens to generate in the output
-            repetition_penalty=1.1  # without this output begins repeating
+            stopping_criteria=stopping_criteria,
+            temperature=0.5,
+            max_new_tokens=1024,
+            repetition_penalty=1.2
         )
 
         pipeline = HuggingFacePipeline(pipeline=generate_text)
@@ -182,22 +181,25 @@ def get_uuid():
 
 def create_sbert_mpnet():
     EMB_SBERT_MPNET_BASE = "sentence-transformers/all-mpnet-base-v2"
-    device = "cuda" if torch.cuda.is_available() else "cpu"
-    return HuggingFaceEmbeddings(model_name=EMB_SBERT_MPNET_BASE, model_kwargs={"device": device})
+    return HuggingFaceEmbeddings(model_name=EMB_SBERT_MPNET_BASE,
+                                 model_kwargs={"device": "cuda" if torch.cuda.is_available() else "cpu"})
 
 
-def retriever_changes(r):
+def retriever_changes(r, force=False):
     global db, qa, pipeline
     if db is None:
+        print("retriever changes: db is None")
         return
 
     if r.lower() == 'basic':
-        if not isinstance(qa, RetrievalQA):
+        if not isinstance(qa, RetrievalQA) or force:
             print("retriever changes: basic")
+            # gr.Info("Retriever changed to basic")
             qa = RetrievalQA.from_llm(llm=pipeline, retriever=db.as_retriever(), return_source_documents=True)
     else:
-        if not isinstance(qa, ConversationalRetrievalChain):
+        if not isinstance(qa, ConversationalRetrievalChain) or force:
             print("retriever changes: conversational")
+            # gr.Info("Retriever changed to conversational")
             qa = ConversationalRetrievalChain.from_llm(llm=pipeline, retriever=db.as_retriever(),
                                                        return_source_documents=True)
 
@@ -229,7 +231,7 @@ def init():
                     <img class="logo" src="https://lambdalabs.com/hubfs/logos/lambda-logo.svg" alt="Lambda Logo"
                         style="margin: auto; max-width: 7rem;">
                     <h1 style="font-weight: 900; font-size: 3rem;">
-                      Chat With Falcon
+                      Chat With FalconPDF
                     </h1>
                   </div>
                 </div>
