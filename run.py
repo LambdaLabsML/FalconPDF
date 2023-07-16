@@ -1,6 +1,7 @@
 import os
 import time
 from threading import Thread
+from datetime import datetime
 from uuid import uuid4
 import gradio as gr
 from time import sleep
@@ -15,13 +16,16 @@ from langchain.vectorstores import Chroma
 from langchain.chains import RetrievalQA, ConversationalRetrievalChain
 from langchain.llms import HuggingFacePipeline
 
-# model_names = ["tiiuae/falcon-40b-instruct", "tiiuae/falcon-7b-instruct", "tiiuae/falcon-rw-1b"]
-model_names = ["tiiuae/falcon-7b-instruct", "tiiuae/falcon-rw-1b"]
+model_names = ["tiiuae/falcon-7b-instruct", "tiiuae/falcon-40b-instruct", "tiiuae/falcon-rw-1b"]
+# model_names = ["tiiuae/falcon-7b-instruct"]
+embedding_function_name = "all-mpnet-base-v2"
 device = f'cuda:{cuda.current_device()}' if cuda.is_available() else 'cpu'
-max_new_tokens = 256
+max_new_tokens = 1024
 repetition_penalty = 10.0
-temperature = 0.5
+temperature = 0
 stop_words_ids = [[193, 7932, 37]]
+chunk_size = 512
+chunk_overlap = 32
 
 class StopOnWords(StoppingCriteria):
     def __init__(self, stops=[], encounters=1):
@@ -39,9 +43,8 @@ def get_uuid():
     return str(uuid4())
 
 
-def create_sbert_mpnet():
-    EMB_SBERT_MPNET_BASE = "sentence-transformers/all-mpnet-base-v2"
-    return HuggingFaceEmbeddings(model_name=EMB_SBERT_MPNET_BASE,
+def create_embedding_function(embedding_function_name):
+    return HuggingFaceEmbeddings(model_name=embedding_function_name,
                                  model_kwargs={"device": "cuda" if torch.cuda.is_available() else "cpu"})
 
 def create_pipelines(model_names):
@@ -95,7 +98,7 @@ def create_pipelines(model_names):
     return pipelines, streamers
 
 pipelines, streamers = create_pipelines(model_names)
-embeddings = create_sbert_mpnet()
+embedding_function = create_embedding_function(embedding_function_name)
 
 def user(message, history):
     # Append the user's message to the conversation history
@@ -122,14 +125,13 @@ def bot(model_name, db_path, chat_mode, history):
     print('------------------------------------')
 
     # Need to create langchain model from db for each session
-    db = Chroma(persist_directory=db_path, embedding_function=embeddings)
-
+    db = Chroma(persist_directory=db_path, embedding_function=embedding_function)
     if chat_mode.lower() == 'basic':
         print("chat mode: basic")
         qa = RetrievalQA.from_llm(
             llm=pipelines[model_name],
             retriever=db.as_retriever(),
-            return_source_documents=True
+            return_source_documents=False
         )
 
         def run_basic(history):
@@ -143,7 +145,7 @@ def bot(model_name, db_path, chat_mode, history):
         qa = ConversationalRetrievalChain.from_llm(
             llm=pipelines[model_name],
             retriever=db.as_retriever(),
-            return_source_documents=True
+            return_source_documents=False
         )
 
         def run_conv(history, chat_hist):
@@ -161,18 +163,23 @@ def bot(model_name, db_path, chat_mode, history):
         yield history
 
 
+
 def pdf_changes(pdf_doc):
     print("pdf changes, loading documents")
 
     # Persistently store the db next to the uploaded pdf
     db_path, file_ext = os.path.splitext(pdf_doc.name)
 
+    timestamp = datetime.now()
+    db_path += "_" + timestamp.strftime("%Y-%m-%d-%H-%S")
+
     loader = OnlinePDFLoader(pdf_doc.name)
     documents = loader.load()
-    text_splitter = CharacterTextSplitter(chunk_size=600, chunk_overlap=0)
+    text_splitter = CharacterTextSplitter(chunk_size=chunk_size, chunk_overlap=chunk_overlap)
     texts = text_splitter.split_documents(documents)
     
-    db = Chroma.from_documents(texts, embeddings, persist_directory=db_path)
+    db = Chroma.from_documents(texts, embedding_function, persist_directory=db_path)
+    db.persist()
     return db_path
 
 
@@ -288,7 +295,7 @@ def init():
 
         clear.click(lambda: None, None, chatbot, queue=False)
 
-    demo.queue(max_size=32, concurrency_count=2)
+    demo.queue(max_size=32, concurrency_count=1)
 
     demo.launch(server_port=8266, inline=False, share=True)
 
