@@ -26,6 +26,8 @@ qa = None
 USER_NAME = "Human"
 BOT_NAME = "AI"
 max_new_tokens = 1024
+repetition_penalty = 10
+temperature = 0.5
 
 STOP_STR = f"\n{USER_NAME}:"
 STOP_SUSPECT_LIST = [":", "\n", "User"]
@@ -79,9 +81,9 @@ def load_falcon(selected_model_name, progress=gr.Progress(track_tqdm=True)):
             return_full_text=True,
             task='text-generation',
             stopping_criteria=stopping_criteria,
-            temperature=0.5,
+            temperature=temperature,
             max_new_tokens=1024,
-            repetition_penalty=1.2
+            repetition_penalty=repetition_penalty
         )
 
         pipeline = HuggingFacePipeline(pipeline=generate_text)
