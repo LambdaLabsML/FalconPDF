@@ -17,6 +17,7 @@ model_name = None
 model = None
 pipeline = None
 tokenizer = None
+generate_text = None
 stop_token_ids = []
 device = f'cuda:{cuda.current_device()}' if cuda.is_available() else 'cpu'
 
@@ -34,12 +35,19 @@ STOP_SUSPECT_LIST = [":", "\n", "User"]
 
 
 def load_falcon(selected_model_name, progress=gr.Progress(track_tqdm=True)):
-    global model, model_name, stop_token_ids, pipeline
+    global model, model_name, stop_token_ids, pipeline, tokenizer, generate_text
 
     if model is None or model_name != selected_model_name:
 
         progress(0, desc="Loading model ...")
 
+        # Release memory before load the new model
+        del model
+        del pipeline
+        del tokenizer
+        del generate_text
+        torch.cuda.empty_cache()
+        
         if selected_model_name == model_names[1]:
             model_name = model_names[1]
             bnb_config = transformers.BitsAndBytesConfig(
