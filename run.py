@@ -1,11 +1,13 @@
 import os
+import time
+from threading import Thread
 from uuid import uuid4
 import gradio as gr
 from time import sleep
 import torch
 from torch import cuda, bfloat16
 import transformers
-from transformers import StoppingCriteria, StoppingCriteriaList
+from transformers import StoppingCriteria, StoppingCriteriaList, TextIteratorStreamer
 from langchain.document_loaders import OnlinePDFLoader
 from langchain.text_splitter import CharacterTextSplitter
 from langchain.embeddings import HuggingFaceEmbeddings
@@ -13,7 +15,8 @@ from langchain.vectorstores import Chroma
 from langchain.chains import RetrievalQA, ConversationalRetrievalChain
 from langchain.llms import HuggingFacePipeline
 
-model_names = ["tiiuae/falcon-40b-instruct", "tiiuae/falcon-7b-instruct", "tiiuae/falcon-rw-1b"]
+# model_names = ["tiiuae/falcon-40b-instruct", "tiiuae/falcon-7b-instruct", "tiiuae/falcon-rw-1b"]
+model_names = ["tiiuae/falcon-7b-instruct", "tiiuae/falcon-rw-1b"]
 device = f'cuda:{cuda.current_device()}' if cuda.is_available() else 'cpu'
 max_new_tokens = 256
 repetition_penalty = 10.0
@@ -43,6 +46,7 @@ def create_sbert_mpnet():
 
 def create_pipelines(model_names):
     pipelines = {}
+    streamers = {}
     
     for model_name in model_names:
         tokenizer = transformers.AutoTokenizer.from_pretrained(model_name)
@@ -73,6 +77,7 @@ def create_pipelines(model_names):
         model.eval()
         print(f"Model loaded on {device}")
 
+        streamer = TextIteratorStreamer(tokenizer, timeout=10., skip_prompt=True, skip_special_tokens=True)
         generate_text = transformers.pipeline(
             model=model, tokenizer=tokenizer,
             return_full_text=True,
@@ -80,14 +85,16 @@ def create_pipelines(model_names):
             stopping_criteria=stopping_criteria,
             temperature=temperature,
             max_new_tokens=max_new_tokens,
-            repetition_penalty=repetition_penalty
+            repetition_penalty=repetition_penalty,
+            streamer=streamer
         )
 
         pipelines[model_name] = HuggingFacePipeline(pipeline=generate_text)
+        streamers[model_name] = streamer
 
-    return pipelines
+    return pipelines, streamers
 
-pipelines = create_pipelines(model_names)
+pipelines, streamers = create_pipelines(model_names)
 embeddings = create_sbert_mpnet()
 
 def user(message, history):
@@ -124,10 +131,13 @@ def bot(model_name, db_path, chat_mode, history):
             retriever=db.as_retriever(),
             return_source_documents=True
         )
-        response = qa(
-            {"query": history[-1][0]}
-        )
-        history[-1][1] = response['result']
+
+        def run_basic(history):
+            qa({"query": history[-1][0]})
+
+        t = Thread(target=run_basic, args=(history,))
+        t.start()
+
     else:
         print("chat mode: conversational")
         qa = ConversationalRetrievalChain.from_llm(
@@ -135,13 +145,20 @@ def bot(model_name, db_path, chat_mode, history):
             retriever=db.as_retriever(),
             return_source_documents=True
         )
-        response = qa(
-            {"question": history[-1][0],
-             "chat_history": chat_hist,
-             })
-        history[-1][1] = response['answer']
 
-    return history
+        def run_conv(history, chat_hist):
+            qa({"question": history[-1][0],
+                "chat_history": chat_hist,
+                }
+            )
+        t = Thread(target=run_conv, args=(history, chat_hist))
+        t.start()
+
+    history[-1][1] = ""
+    for new_text in streamers[model_name]:
+        history[-1][1]  += new_text
+        time.sleep(0.01)
+        yield history
 
 
 def pdf_changes(pdf_doc):
