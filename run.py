@@ -26,7 +26,7 @@ qa = None
 USER_NAME = "Human"
 BOT_NAME = "AI"
 max_new_tokens = 1024
-repetition_penalty = 10
+repetition_penalty = 10.0
 temperature = 0.5
 
 STOP_STR = f"\n{USER_NAME}:"
