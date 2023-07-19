@@ -8,7 +8,7 @@ app_file: app.py
 
 FalconPDF is a chatbot that allows users to have context-based conversations using PDF documents as a reference. Unlike simple chatbots, FalconPDF enables users to upload PDF files, which serve as additional context for the conversation. The underlying language model used in this project is Falcon, a large language model (LLM).
 
-![app.png](docs/app.png)
+![app.png](docs/app.gif)
 
 ### Benefits of FalconPDF
 
