@@ -16,8 +16,8 @@ from langchain.vectorstores import Chroma
 from langchain.chains import RetrievalQA, ConversationalRetrievalChain
 from langchain.llms import HuggingFacePipeline
 
-model_names = ["tiiuae/falcon-7b-instruct", "tiiuae/falcon-40b-instruct", "tiiuae/falcon-rw-1b"]
-# model_names = ["tiiuae/falcon-7b-instruct"]
+# model_names = ["tiiuae/falcon-7b-instruct", "tiiuae/falcon-40b-instruct", "tiiuae/falcon-rw-1b"]
+model_names = ["tiiuae/falcon-7b-instruct"]
 embedding_function_name = "all-mpnet-base-v2"
 device = f'cuda:{cuda.current_device()}' if cuda.is_available() else 'cpu'
 max_new_tokens = 1024
@@ -50,7 +50,7 @@ def create_embedding_function(embedding_function_name):
 def create_pipelines(model_names):
     pipelines = {}
     streamers = {}
-    
+
     for model_name in model_names:
         tokenizer = transformers.AutoTokenizer.from_pretrained(model_name)
         stop_words_ids_pt = [torch.tensor(x) for x in stop_words_ids]
@@ -177,7 +177,7 @@ def pdf_changes(pdf_doc):
     documents = loader.load()
     text_splitter = CharacterTextSplitter(chunk_size=chunk_size, chunk_overlap=chunk_overlap)
     texts = text_splitter.split_documents(documents)
-    
+
     db = Chroma.from_documents(texts, embedding_function, persist_directory=db_path)
     db.persist()
     return db_path
