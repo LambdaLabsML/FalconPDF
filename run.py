@@ -1,10 +1,14 @@
+import os
+import time
+from threading import Thread
+from datetime import datetime
 from uuid import uuid4
 import gradio as gr
 from time import sleep
 import torch
 from torch import cuda, bfloat16
 import transformers
-from transformers import StoppingCriteria, StoppingCriteriaList
+from transformers import StoppingCriteria, StoppingCriteriaList, TextIteratorStreamer
 from langchain.document_loaders import OnlinePDFLoader
 from langchain.text_splitter import CharacterTextSplitter
 from langchain.embeddings import HuggingFaceEmbeddings
@@ -12,98 +16,16 @@ from langchain.vectorstores import Chroma
 from langchain.chains import RetrievalQA, ConversationalRetrievalChain
 from langchain.llms import HuggingFacePipeline
 
-model_names = ["tiiuae/falcon-7b-instruct", "tiiuae/falcon-40b-instruct"]
-model_name = None
-model = None
-pipeline = None
-tokenizer = None
-stop_token_ids = []
+model_names = ["tiiuae/falcon-7b-instruct", "tiiuae/falcon-40b-instruct", "tiiuae/falcon-rw-1b"]
+# model_names = ["tiiuae/falcon-7b-instruct"]
+embedding_function_name = "all-mpnet-base-v2"
 device = f'cuda:{cuda.current_device()}' if cuda.is_available() else 'cpu'
-
-db = None
-qa = None
-
-USER_NAME = "Human"
-BOT_NAME = "AI"
 max_new_tokens = 1024
-
-STOP_STR = f"\n{USER_NAME}:"
-STOP_SUSPECT_LIST = [":", "\n", "User"]
-
-
-def load_falcon(selected_model_name, progress=gr.Progress(track_tqdm=True)):
-    global model, model_name, stop_token_ids, pipeline
-
-    if model is None or model_name != selected_model_name:
-
-        progress(0, desc="Loading model ...")
-
-        if selected_model_name == model_names[1]:
-            model_name = model_names[1]
-            bnb_config = transformers.BitsAndBytesConfig(
-                load_in_4bit=True,
-                bnb_4bit_quant_type='nf4',
-                bnb_4bit_use_double_quant=True,
-                bnb_4bit_compute_dtype=bfloat16
-            )
-            model = transformers.AutoModelForCausalLM.from_pretrained(
-                model_name,
-                trust_remote_code=True,
-                quantization_config=bnb_config,
-                device_map='auto'
-            )
-        else:
-            model_name = model_names[0]
-            model = transformers.AutoModelForCausalLM.from_pretrained(
-                model_name,
-                trust_remote_code=True,
-                torch_dtype=torch.bfloat16,
-                device_map='auto'
-            )
-
-        model.eval()
-        print(f"Model loaded on {device}")
-
-        tokenizer = transformers.AutoTokenizer.from_pretrained(model_name)
-
-        stop_token_ids = [
-            tokenizer.convert_tokens_to_ids(x) for x in [
-                [USER_NAME, ':'], [BOT_NAME, ':']
-            ]
-        ]
-
-        stop_token_ids = [torch.LongTensor(x).to(device) for x in stop_token_ids]
-
-        generate_text = transformers.pipeline(
-            model=model, tokenizer=tokenizer,
-            return_full_text=True,
-            task='text-generation',
-            stopping_criteria=stopping_criteria,
-            temperature=0.5,
-            max_new_tokens=1024,
-            repetition_penalty=1.2
-        )
-
-        pipeline = HuggingFacePipeline(pipeline=generate_text)
-
-    return "Model ready!", gr.update(interactive=True)
-
-
-def check_stopwords(list_key, input_str):
-    input_str_lower = input_str.lower()
-    matched_indices = []
-    for keyword in list_key:
-        keyword_lower = keyword.lower()
-        start = 0
-        while start < len(input_str_lower):
-            index = input_str_lower.find(keyword_lower, start)
-            if index == -1:
-                break
-            end = index + len(keyword_lower) - 1
-            matched_indices.append((index, end))
-            start = end + 1
-    return len(matched_indices) > 0, matched_indices
-
+repetition_penalty = 10.0
+temperature = 0
+stop_words_ids = [[193, 7932, 37]]
+chunk_size = 512
+chunk_overlap = 32
 
 class StopOnWords(StoppingCriteria):
     def __init__(self, stops=[], encounters=1):
@@ -117,40 +39,75 @@ class StopOnWords(StoppingCriteria):
 
         return False
 
-
-class StopOnTokens(StoppingCriteria):
-    def __call__(self, input_ids: torch.LongTensor, scores: torch.FloatTensor, **kwargs) -> bool:
-        for stop_ids in stop_token_ids:
-            if torch.eq(input_ids[0][-len(stop_ids):], stop_ids).all():
-                return True
-        return False
+def get_uuid():
+    return str(uuid4())
 
 
-stop_words = ["\nUser:", ]
-stop_words_ids = [[193, 7932, 37]]
+def create_embedding_function(embedding_function_name):
+    return HuggingFaceEmbeddings(model_name=embedding_function_name,
+                                 model_kwargs={"device": "cuda" if torch.cuda.is_available() else "cpu"})
 
-stop_words_ids_pt = [torch.tensor(x) for x in stop_words_ids]
+def create_pipelines(model_names):
+    pipelines = {}
+    streamers = {}
+    
+    for model_name in model_names:
+        tokenizer = transformers.AutoTokenizer.from_pretrained(model_name)
+        stop_words_ids_pt = [torch.tensor(x) for x in stop_words_ids]
+        stopping_criteria = StoppingCriteriaList([StopOnWords(stops=stop_words_ids_pt)])
 
-stopping_criteria = StoppingCriteriaList([StopOnWords(stops=stop_words_ids_pt)])
+        if model_name == "tiiuae/falcon-40b-instruct":
+            bnb_config = transformers.BitsAndBytesConfig(
+                load_in_4bit=True,
+                bnb_4bit_quant_type='nf4',
+                bnb_4bit_use_double_quant=True,
+                bnb_4bit_compute_dtype=bfloat16
+            )
+            model = transformers.AutoModelForCausalLM.from_pretrained(
+                model_name,
+                trust_remote_code=True,
+                quantization_config=bnb_config,
+                device_map='auto'
+            )
+        else:
+            model = transformers.AutoModelForCausalLM.from_pretrained(
+                model_name,
+                trust_remote_code=True,
+                torch_dtype=torch.bfloat16,
+                device_map='auto'
+            )
 
+        model.eval()
+        print(f"Model loaded on {device}")
+
+        streamer = TextIteratorStreamer(tokenizer, timeout=10., skip_prompt=True, skip_special_tokens=True)
+        generate_text = transformers.pipeline(
+            model=model, tokenizer=tokenizer,
+            return_full_text=True,
+            task='text-generation',
+            stopping_criteria=stopping_criteria,
+            temperature=temperature,
+            max_new_tokens=max_new_tokens,
+            repetition_penalty=repetition_penalty,
+            streamer=streamer
+        )
+
+        pipelines[model_name] = HuggingFacePipeline(pipeline=generate_text)
+        streamers[model_name] = streamer
+
+    return pipelines, streamers
+
+pipelines, streamers = create_pipelines(model_names)
+embedding_function = create_embedding_function(embedding_function_name)
 
 def user(message, history):
     # Append the user's message to the conversation history
     return "", history + [[message, None]]
 
 
-def bot(history, retriever):
+def bot(model_name, db_path, chat_mode, history):
     if not history or history[-1][0] == "":
         gr.Info("Please start the conversation by saying something.")
-        return None
-
-    global qa, pipeline
-    if pipeline is None:
-        gr.Info("Please load a model first.")
-        return None
-
-    if qa is None:
-        gr.Info("Please upload a pdf file first.")
         return None
 
     chat_hist = history[:-1]
@@ -161,60 +118,69 @@ def bot(history, retriever):
     print(f"chat_hist:\n {chat_hist}")
     print("@" * 20)
 
-    if retriever.lower() == 'basic':
-        response = qa(
-            {"query": history[-1][0]})
+    print('------------------------------------')
+    print(model_name)
+    print(db_path)
+    print(chat_mode)
+    print('------------------------------------')
+
+    # Need to create langchain model from db for each session
+    db = Chroma(persist_directory=db_path, embedding_function=embedding_function)
+    if chat_mode.lower() == 'basic':
+        print("chat mode: basic")
+        qa = RetrievalQA.from_llm(
+            llm=pipelines[model_name],
+            retriever=db.as_retriever(),
+            return_source_documents=False
+        )
+
+        def run_basic(history):
+            qa({"query": history[-1][0]})
+
+        t = Thread(target=run_basic, args=(history,))
+        t.start()
+
     else:
-        response = qa(
-            {"question": history[-1][0],
-             "chat_history": chat_hist,
-             })
+        print("chat mode: conversational")
+        qa = ConversationalRetrievalChain.from_llm(
+            llm=pipelines[model_name],
+            retriever=db.as_retriever(),
+            return_source_documents=False
+        )
 
-    history[-1][1] = response['answer' if retriever.lower() == 'conversational' else 'result']
+        def run_conv(history, chat_hist):
+            qa({"question": history[-1][0],
+                "chat_history": chat_hist,
+                }
+            )
+        t = Thread(target=run_conv, args=(history, chat_hist))
+        t.start()
 
-    return history
-
-
-def get_uuid():
-    return str(uuid4())
-
-
-def create_sbert_mpnet():
-    EMB_SBERT_MPNET_BASE = "sentence-transformers/all-mpnet-base-v2"
-    return HuggingFaceEmbeddings(model_name=EMB_SBERT_MPNET_BASE,
-                                 model_kwargs={"device": "cuda" if torch.cuda.is_available() else "cpu"})
-
-
-def retriever_changes(r, force=False):
-    global db, qa, pipeline
-    if db is None:
-        print("retriever changes: db is None")
-        return
-
-    if r.lower() == 'basic':
-        if not isinstance(qa, RetrievalQA) or force:
-            print("retriever changes: basic")
-            # gr.Info("Retriever changed to basic")
-            qa = RetrievalQA.from_llm(llm=pipeline, retriever=db.as_retriever(), return_source_documents=True)
-    else:
-        if not isinstance(qa, ConversationalRetrievalChain) or force:
-            print("retriever changes: conversational")
-            # gr.Info("Retriever changed to conversational")
-            qa = ConversationalRetrievalChain.from_llm(llm=pipeline, retriever=db.as_retriever(),
-                                                       return_source_documents=True)
+    history[-1][1] = ""
+    for new_text in streamers[model_name]:
+        history[-1][1]  += new_text
+        time.sleep(0.01)
+        yield history
 
 
-def pdf_changes(pdf_doc, r):
+
+def pdf_changes(pdf_doc):
     print("pdf changes, loading documents")
+
+    # Persistently store the db next to the uploaded pdf
+    db_path, file_ext = os.path.splitext(pdf_doc.name)
+
+    timestamp = datetime.now()
+    db_path += "_" + timestamp.strftime("%Y-%m-%d-%H-%S")
+
     loader = OnlinePDFLoader(pdf_doc.name)
     documents = loader.load()
-    text_splitter = CharacterTextSplitter(chunk_size=600, chunk_overlap=0)
+    text_splitter = CharacterTextSplitter(chunk_size=chunk_size, chunk_overlap=chunk_overlap)
     texts = text_splitter.split_documents(documents)
-    embeddings = create_sbert_mpnet()
-    global db
-    db = Chroma.from_documents(texts, embeddings)
-    retriever_changes(r)
-    return None
+    
+    db = Chroma.from_documents(texts, embedding_function, persist_directory=db_path)
+    db.persist()
+    return db_path
 
 
 def init():
@@ -222,8 +188,6 @@ def init():
             theme=gr.themes.Soft(),
             css=".disclaimer {font-variant-caps: all-small-caps;}",
     ) as demo:
-        conversation_id = gr.State(get_uuid)
-
         gr.HTML(
             """
                 <div style="text-align: center; max-width: 650px; margin: 0 auto;">
@@ -239,8 +203,9 @@ def init():
         )
 
         pdf_doc = gr.File(label="Load a pdf", file_types=['.pdf'], type="file")
-        model_id = gr.Radio(label="LLM", choices=model_names, value=model_names[0])
-        retriever = gr.Radio(label="Chat mode", choices=['Basic', 'Conversational'], value='Basic',
+        model_id = gr.Radio(label="LLM", choices=model_names, value=model_names[0], interactive=True)
+        db_path = gr.Textbox(label="DB_PATH", visible=False)
+        chat_mode = gr.Radio(label="Chat mode", choices=['Basic', 'Conversational'], value='Basic',
                              info="Basic: no coversational context. Conversational: uses conversational context.")
         chatbot = gr.Chatbot(height=500)
 
@@ -278,16 +243,9 @@ def init():
                 """
             )
 
-        def frozen():
-            return gr.update(interactive=False)
+        model_id.change(clear_input, inputs=[], outputs=[msg])
 
-        model_id.change(frozen, inputs=[], outputs=[model_id]) \
-            .then(load_falcon, inputs=[model_id], outputs=[msg, model_id]) \
-            .then(clear_input, inputs=[], outputs=[msg])
-
-        retriever.change(retriever_changes, inputs=[retriever], outputs=[])
-
-        pdf_doc.upload(pdf_changes, inputs=[pdf_doc, retriever], outputs=[msg]). \
+        pdf_doc.upload(pdf_changes, inputs=[pdf_doc], outputs=[db_path]). \
             then(clear_input, inputs=[], outputs=[msg]). \
             then(lambda: None, None, chatbot)
 
@@ -300,8 +258,10 @@ def init():
         ).then(
             fn=bot,
             inputs=[
+                model_id,
+                db_path,
+                chat_mode,
                 chatbot,
-                retriever
             ],
             outputs=chatbot,
             queue=True,
@@ -316,8 +276,10 @@ def init():
         ).then(
             fn=bot,
             inputs=[
+                model_id,
+                db_path,
+                chat_mode,
                 chatbot,
-                retriever
             ],
             outputs=chatbot,
             queue=True,
@@ -333,11 +295,10 @@ def init():
 
         clear.click(lambda: None, None, chatbot, queue=False)
 
-    demo.queue(max_size=128, concurrency_count=2)
+    demo.queue(max_size=32, concurrency_count=1)
 
     demo.launch(server_port=8266, inline=False, share=True)
 
 
 if __name__ == "__main__":
-    load_falcon(model_names[0])
     init()
