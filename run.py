@@ -227,8 +227,8 @@ def init():
                     stop = gr.Button("Stop")
                     clear = gr.Button("Clear")
 
-        gr.Examples(['What is the summary of the document?',
-                     'What is the motivation of the document?'],
+        gr.Examples(['What is the summary of the paper?',
+                     'What is the motivation of the paper?'],
                     inputs=msg)
 
         def clear_input():
