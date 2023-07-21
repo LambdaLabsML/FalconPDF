@@ -17,8 +17,8 @@ from langchain.vectorstores import Chroma
 from langchain.chains import RetrievalQA, ConversationalRetrievalChain
 from langchain.llms import HuggingFacePipeline
 
-model_names = ["tiiuae/falcon-7b-instruct", "tiiuae/falcon-40b-instruct", "tiiuae/falcon-rw-1b"]
-# model_names = ["tiiuae/falcon-7b-instruct"]
+# model_names = ["tiiuae/falcon-7b-instruct", "tiiuae/falcon-40b-instruct", "tiiuae/falcon-rw-1b"]
+model_names = ["tiiuae/falcon-7b-instruct"]
 models = {}
 embedding_function_name = "all-mpnet-base-v2"
 device = f'cuda:{cuda.current_device()}' if cuda.is_available() else 'cpu'
