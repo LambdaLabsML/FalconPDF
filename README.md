@@ -16,7 +16,8 @@ Unlock the potential of open-source LLMs by hosting your very own langchain+Falc
 
 - End-to-end open-source (embeddings and LLMs). No OpenAI API Key is required!
 - Choose between the simplicity of basic Q&A mode or the conversational flow with dialog history.
-- Enjoy seamless streaming of answers with concurrent users.
+- Enjoy seamless streaming of answers
+- Support concurrent users.
 
 ## How to Get Started
 
@@ -26,7 +27,7 @@ Launching the app is a breeze! Launch it from your local machine using:
 python run.py
 ```
 
-or host it as a [Lambda Cloud demo](https://cloud.lambdalabs.com/demos) using the url of this repo:
+or host it as a [Lambda Cloud demo](https://cloud.lambdalabs.com/demos) using the URL of this repo:
 
 <img src="docs/demo.png" alt="demo" width="400"/>
 
@@ -36,15 +37,13 @@ or host it as a [Lambda Cloud demo](https://cloud.lambdalabs.com/demos) using th
 
 The PDF you upload serves as the context for answering your questions. The approach involves storing this context in a Chroma database. By parsing the PDF into text and creating embeddings for chunks of text, we enable easy retrievals later on. When you pose a question, we calculate the question's embedding and compare it with the embedded texts in the database. The most relevant records are then inserted as context to assist our LLM model in generating the final answer.
 
-![img_1.png](img.png)
-
 ### Falcon models
 
 This project utilizes the `Falocn-7b-instruct` and `Falcon-40b-instruct` models, which have been fine-tuned on instruct datasets. The 7B model can be hosted on a 24GB GPU machine, while the 40B model needs over 40GB GPU memory (even with 4-bit quantization).
 
 #### Stopping criteria
 
-"StopOnWords" are used to ensure our model doesn't wander endlessly. They halt the generation process when the output contains certain predefined words. Note that "StopOnWords" can be affected by the system prompt, which marks the turns using key words like `AI:` and `User:`, or `Question:` and `Answer:`. These keywords are usually used as the StopOnWords.
+"StopOnWords" are used to ensure our model doesn't wander endlessly. They halt the generation process when the output contains certain predefined words. Note that "StopOnWords" can be affected by the system prompt, which marks the turns using keywords like `AI:` and `User:`, or `Question:` and `Answer:`. These keywords are usually used as the StopOnWords.
 
 #### Repetition penalty
 
