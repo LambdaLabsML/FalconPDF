@@ -208,7 +208,7 @@ def init():
 
         pdf_doc = gr.File(label="Load a pdf", file_types=['.pdf'], type="file")
         model_id = gr.Radio(label="LLM", choices=model_names, value=model_names[0], interactive=True)
-        db_path = gr.Textbox(label="DB_PATH", visible=True)
+        db_path = gr.Textbox(label="DB_PATH", visible=False)
         chat_mode = gr.Radio(label="Chat mode", choices=['Basic', 'Conversational'], value='Basic',
                              info="Basic: no coversational context. Conversational: uses conversational context.")
         chatbot = gr.Chatbot(height=500)
