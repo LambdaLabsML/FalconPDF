@@ -8,7 +8,9 @@ app_file: app.py
 
 Unlock the potential of open-source LLMs by hosting your very own langchain+Falcon+Chroma application! Now, you can effortlessly upload a PDF and engage in captivating Q&A sessions about its contents.
 
-Try it [here](https://cloud.lambdalabs.com/demos/lambda/FalconPDF) on Lambda Cloud (running on an A10 instance)!
+**Try it [here](https://cloud.lambdalabs.com/demos/lambda/FalconPDF) on Lambda Cloud (running on an A10 instance)!**
+
+![app.png](docs/app.gif)
 
 ## Discover Key Features
 
@@ -26,7 +28,7 @@ python run.py
 
 or host it as a [Lambda Cloud demo](https://cloud.lambdalabs.com/demos) using the url of this repo:
 
-<img src="demo.png" alt="demo" width="400"/>
+<img src="docs/demo.png" alt="demo" width="400"/>
 
 ## The Magic Behind It All
 
