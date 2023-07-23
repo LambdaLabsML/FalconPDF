@@ -6,11 +6,13 @@ app_file: app.py
 
 # Chat with PDF using Falcon: Unleashing the Power of Open-Source LLMs!
 
-Unlock the potential of open-source LLMs by hosting your very own langchain+Falcon+Chroma application! Now, you can effortlessly upload a PDF and engage in captivating Q&A sessions about its contents.
+Unlock the potential of open-source LLMs by hosting your very own langchain+Falcon+Chroma application! Now, you can upload a PDF and engage in captivating Q&A sessions about its contents.
 
 **Try it [here](https://cloud.lambdalabs.com/demos/lambda/FalconPDF) on Lambda Cloud (running on an A10 instance)!**
 
 ![app.png](docs/app.gif)
+
+Disclaimer: This research demo serves for learning purposes and utilizes open-source models for computing both embeddings and output text. Please note that the quality of the answers may not match those obtained through OpenAI APIs.
 
 ## Discover Key Features
 
